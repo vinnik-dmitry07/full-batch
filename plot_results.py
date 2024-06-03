@@ -1,4 +1,5 @@
 import math
+import os
 from functools import partial
 
 import matplotlib.pyplot as plt
@@ -29,6 +30,7 @@ def smooth(scalars: list[float], weight: float = 0.9) -> list[float]:
 
 
 plt.rcParams['figure.dpi'] = 600
+os.chdir('data')
 # plt.rcParams['axes.prop_cycle'] = cycler('color', plt.get_cmap('tab20').colors)
 plt.plot(smooth(pd.read_csv('sgd_256_sched.csv')['Value']), label='SGD Batch=256 + OneCycleLR')
 plt.plot(smooth(pd.read_csv('madgrad_256_sched_d700.csv')['Value']), label='MADGRAD Batch=256 + OneCLR, LR/700')
