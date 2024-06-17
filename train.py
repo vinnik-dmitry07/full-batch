@@ -6,8 +6,9 @@ import torchvision
 from pl_bolts.datamodules import CIFAR10DataModule
 from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
 from pytorch_lightning import LightningModule, Trainer, seed_everything
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, StochasticWeightAveraging
 from pytorch_lightning.plugins import MixedPrecisionPlugin
+from pytorch_lightning_sam_callback import SAM
 from torch.optim.lr_scheduler import OneCycleLR
 from torchmetrics.functional import accuracy
 
@@ -60,16 +61,21 @@ class LitResnet(LightningModule):
 
     # noinspection PyUnresolvedReferences
     def configure_optimizers(self):
-        from sophia import SophiaG
-        from madgrad import MADGRAD
-        from lion_pytorch import Lion
-        from pytorch_lamb import Lamb
+        # https://github.com/Liuhong99/Sophia/commit/a7e157229b71d58cf995d32854f1be15c265b350
+        # from sophia import SophiaG
+        # https://github.com/facebookresearch/madgrad/commit/bdbd2d760cb5e73f8f1acb287b3844a29f75282d
+        # from madgrad import MADGRAD
+        # https://github.com/lucidrains/lion-pytorch
+        # from lion_pytorch import Lion
+        # https://github.com/cybertronai/pytorch-lamb/commit/d3ab8dccf6717977c1ad0d6b95499f6b25bba41b
+        # from pytorch_lamb import Lamb
+        # https://github.com/facebookresearch/schedule_free/commit/c5fca72b76de6529a43d3959f2d8f0d0a1c8ce26
+        # from schedulefree import SGDScheduleFree, AdamWScheduleFree
         from torch.optim import SGD, Adam, AdamW
-
-        optimizer = Adam(
+        optimizer = SGD(
             self.parameters(),
             lr=self.hparams.lr,
-            weight_decay=5e-3,
+            weight_decay=5e-4,
         )
         steps_per_epoch = math.ceil(self.hparams.num_samples / BATCH_SIZE)
         scheduler_dict = {
@@ -112,15 +118,23 @@ if __name__ == '__main__':
 
     model = LitResnet(lr=0.05, num_samples=cifar10_dm.num_samples)
 
+    # TODO https://github.com/Lightning-Universe/lightning-flash/blob/master/examples/image/learn2learn_img_classification_imagenette.py
     trainer = Trainer(
         max_epochs=100,
         accelerator="gpu",
         # accumulate_grad_batches=4000 // 256,
         devices=[0],
-        callbacks=LearningRateMonitor(logging_interval="step"),
-        plugins=MixedPrecisionPlugin(precision=16, device='cuda'),
+        callbacks=[
+            # https://github.com/ar90n/pytorch-lightning-sam-callback/commit/3068c2dede6e49c6461daf966e2da969d24257f8
+            SAM(),
+            # Comment `if trainer.lr_scheduler_configs` in pytorch_lightning.callbacks.stochastic_weight_avg.py:
+            StochasticWeightAveraging(swa_epoch_start=0., swa_lrs=4e-7),
+            LearningRateMonitor(logging_interval="step")
+        ],
+        # Does not work with used SAM callback, use default float32:
+        # plugins=MixedPrecisionPlugin(precision=16, device='cuda'),
         # resume_from_checkpoint='lightning_logs/version_4/checkpoints/epoch=2665-step=7998.ckpt'
     )
 
     trainer.fit(model, cifar10_dm)
-    trainer.test(model, datamodule=cifar10_dm)
+    trainer.test(model, cifar10_dm)
